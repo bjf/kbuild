@@ -1,0 +1,197 @@
+#!/bin/env python3
+
+# kk is a utility for helping to "crank" kernels. It makes use of the cranky utility in kteam-tools. I find
+# the cranky utility to be, generall, more verbose than it needs to be; forces you to run command sequences
+# that could easily be combined; are less helpful pointing out real errors.
+#
+
+import sys
+import os
+from argparse                           import ArgumentParser, RawTextHelpFormatter
+
+from subprocess                         import PIPE, STDOUT, Popen
+import shlex
+
+
+SBUILDRC = '''
+# Name to use as override in .changes files for the Maintainer: field. Field is required, there is no default.
+#
+$maintainer_name='Ubuntu Kernel Team <kernel-team@lists.ubuntu.com>';
+$distribution = "jammy";
+$build_arch_all = 1;
+$run_lintian = 0;
+
+# When to purge the build directory after the build completes. Possible values are "never",
+# "successful", and "always".  "always" is the default. It can be helpful to preserve failing
+# builds for debugging purposes.
+#
+# Use "schroot -e --all-sessions" to clean them up manually.
+#
+$purge_build_directory = 'successful';
+$purge_session = 'successful';
+$purge_build_deps = 'successful';
+$log_dir = '.';
+
+# don't remove this, Perl needs it:
+1;
+'''
+
+# ------------------------------------------------------------------------------------------------------------------
+# Make kb as self contained as possible.
+#
+def pro(*args, **kwargs):
+    print(*args, file=sys.stdout, **kwargs)
+
+def pre(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
+class AshError(Exception):
+    def __init__(self, returncode, cmd, output):
+        self.returncode = returncode
+        self.command    = cmd
+        self.output     = output
+
+def ash(command, handler=None):
+    results = []
+    # pre(f'-> {command}')
+    process = Popen(shlex.split(command), bufsize=1, stdout=PIPE, stderr=STDOUT, encoding='utf-8', errors='replace' )
+    while True:
+        output = process.stdout.readline()
+        if output == '' and process.poll() is not None:
+            break
+        if output:
+            results.append(output.rstrip())
+            if handler:
+                handler(output)
+    rc = process.poll()
+    if rc != 0:
+        raise AshError(rc, command, results)
+    return results
+
+def ash_to_stderr(line):
+    pre(line.rstrip())
+
+def ash_to_stdout(line):
+    pro(line.rstrip())
+
+
+# ------------------------------------------------------------------------------------------------------------------
+class CrankyConfigFileMissingError(Exception):
+    pass
+
+class InitializationError(Exception):
+    pass
+
+class KteamToolsUpdateError(Exception):
+    pass
+
+class KernelRepoError(Exception):
+    pass
+
+class CheckoutError(Exception):
+    pass
+
+class DebianError(Exception):
+    pass
+
+class EnvironmentVerificationError(Exception):
+    pass
+
+class NotAKernelRepoError(Exception):
+    pass
+
+# For now we will do without colorored output.
+#
+# no-color class Clr():
+# no-color     '''
+# no-color     '''
+# no-color     GREEN           = CF('green')
+# no-color     YELLOW          = CF('yellow_1')
+# no-color     CYAN            = CF('cyan')
+# no-color     ORANGE          = CF('orange_1')
+# no-color     RED             = CF('red')
+# no-color     MAGENTA         = CF('magenta')
+# no-color
+# no-color     BOLD            = CA('bold')
+
+class KernelBuilderBase():
+    step = 0
+
+    def __init__(self):
+        cranky_config_path = os.path.expanduser(os.environ['CRANKY_CONFIG_FILE'])
+        if not os.path.exists(cranky_config_path):
+            raise CrankyConfigFileMissingError(f'The cranky config file ({cranky_config_path}) does not exist.')
+
+    @property
+    def branch(self):
+        output = ash('git branch')
+        for line in output:
+            if line.startswith('*'):
+                return line.replace('* ', '').strip()
+
+    def requires_kernel_repo(self):
+        try:
+            pass
+
+        except (DebianError):
+            raise NotAKernelRepoError('The directory you are currently sitting in is not the root of an Ubuntu kernel repository.')
+
+class KernelBuilder(KernelBuilderBase):
+
+    def __init__(self):
+        super(KernelBuilder, self).__init__()
+
+    def execute(self, cmd: str) -> None:
+        match args.cmd:
+            case 'info':
+                pass
+
+            case 'setup':
+                sbuildrc_path = os.path.expanduser('~/.sbuildrc')
+                if os.path.exists(sbuildrc_path):
+                    pre('\nWarning:\n    The ~/.sbuildrc file already exists and will not be overwritten.\n')
+                else:
+                    with open(sbuildrc_path, 'w') as fd:
+                        fd.write(SBUILDRC)
+
+                ash("sg sbuild -c 'mk-sbuild 'jammy''", ash_to_stdout)
+                ash('newgrp sbuild')
+
+            case 'build':
+                pass
+
+
+if __name__ == '__main__':
+    app_description = '''
+Kernel build script. It's important to build the kernel packages using techniques that closely match
+how Canonical's builders perform builds. With that in mind the builds will be done un chroots using
+the sbuild command. This tool is a convenience wrapper around sbuild to hopefully, make it easier to
+setup the build environment and then perform the builds.
+    '''
+    app_epilog = '''
+    '''
+
+    cmd_help = '''The kb command to be run, one of:
+
+build                       Run the sbuild command to actually build the kernel package.
+
+help                        Prints this information that you are reading now.
+
+setup                       Create the sbuild environment (chroots).
+    '''
+
+    p = ArgumentParser(description=app_description, epilog=app_epilog, formatter_class=RawTextHelpFormatter, add_help=False)
+    p.add_argument('cmd', nargs=1, help=cmd_help)
+    # p.add_argument('options', nargs='*', help=None)
+    args = p.parse_args()
+    args.cmd = args.cmd[0]
+
+    if args.cmd == 'help':
+        p.print_help()
+    else:
+        try:
+            KernelBuilder().execute(args.cmd)
+            sys.exit(0)
+        except (CheckoutError, InitializationError, KteamToolsUpdateError, CrankyConfigFileMissingError) as e:
+            pre(f'  ** Error: {str(e)}')
+            sys.exit(1)
