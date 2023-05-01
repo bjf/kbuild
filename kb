@@ -232,7 +232,6 @@ class KernelBuilder(KernelBuilderBase):
                     ash("sudo apt update")
                     ash("sudo apt install sbuild ubuntu-dev-tools -y")
                     ash("sg sbuild -c 'mk-sbuild 'jammy''", ash_to_stdout)
-                    ash('newgrp sbuild')
 
             case 'build':
                 pass
