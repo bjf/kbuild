@@ -155,6 +155,7 @@ class KernelBuilder(KernelBuilderBase):
                     with open(sbuildrc_path, 'w') as fd:
                         fd.write(SBUILDRC)
 
+                ash("sudo apt install sbuild -y")
                 ash("sg sbuild -c 'mk-sbuild 'jammy''", ash_to_stdout)
                 ash('newgrp sbuild')
 
