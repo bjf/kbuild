@@ -185,8 +185,8 @@ class KernelBuilder(KernelBuilderBase):
                 if remote:
                     Rash.target = remote
                     user = pwd.getpwuid(os.getuid()).pw_name
-                    # self.remote_setup_user(user)
-                    # self.remote_setup_sbuild(user)
+                    self.remote_setup_user(user)
+                    self.remote_setup_sbuild(user)
                     self.remote_clone_kbuild()
                     self.remote_run_kb_setup()
 
@@ -206,21 +206,6 @@ class KernelBuilder(KernelBuilderBase):
                         uname = rash('uname -m')[0].strip().split('\n')[-1]
                         arch = archmap[uname]
                         pre(f'This builder is {arch}')
-
-                        # The sbuild group doesn't exist until we've installed sbuild so install that now.
-                        #
-                        rash("sudo apt update;sudo apt install sbuild ubuntu-dev-tools -y", handler=ash_to_stdout)
-
-                        user = pwd.getpwuid(os.getuid()).pw_name
-                        rash(f'sudo useradd -d /home/{user}/ -p {user} -m -U {user} -s /bin/bash')
-                        rash(f'sudo usermod -a -G sbuild {user}')
-
-                        rash(f'sudo rsync -arv .ssh /home/{user}/')
-                        rash(f'sudo chown -R {user}.{user} /home/{user}/.ssh')
-                        rash(f'echo "{user} ALL=(ALL) NOPASSWD:ALL" | sudo tee -a /etc/sudoers.d/90-cloud-init-users')
-
-                        Rash.target = remote
-                        rash('git clone https://github.com/bjf/kbuild.git', handler=ash_to_stdout)
                 else:
                     sbuildrc_path = os.path.expanduser('~/.sbuildrc')
                     if os.path.exists(sbuildrc_path):
