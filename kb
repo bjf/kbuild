@@ -118,9 +118,10 @@ class KernelBuilderBase():
     step = 0
 
     def __init__(self):
-        cranky_config_path = os.path.expanduser(os.environ['CRANKY_CONFIG_FILE'])
-        if not os.path.exists(cranky_config_path):
-            raise CrankyConfigFileMissingError(f'The cranky config file ({cranky_config_path}) does not exist.')
+        # cranky_config_path = os.path.expanduser(os.environ['CRANKY_CONFIG_FILE'])
+        # if not os.path.exists(cranky_config_path):
+        #     raise CrankyConfigFileMissingError(f'The cranky config file ({cranky_config_path}) does not exist.')
+        pass
 
     @property
     def branch(self):
