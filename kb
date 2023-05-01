@@ -155,6 +155,7 @@ class KernelBuilder(KernelBuilderBase):
         super(KernelBuilder, self).__init__()
 
     def remote_setup_user(self, user):
+        pre('Create remote user')
         save = Rash.target
         Rash.target = f'ubuntu@{Rash.target}'
         user = pwd.getpwuid(os.getuid()).pw_name
@@ -167,14 +168,18 @@ class KernelBuilder(KernelBuilderBase):
     def remote_setup_sbuild(self, user):
         # The sbuild group doesn't exist until we've installed sbuild so install that now.
         #
-        rash("sudo apt update;sudo apt install sbuild ubuntu-dev-tools -y", handler=ash_to_stdout)
+        pre('Install sbuild and ubuntu-dev-tools')
+        rash("sudo apt update;sudo apt install sbuild ubuntu-dev-tools -y")
         rash(f'sudo usermod -a -G sbuild {user}')
 
     def remote_clone_kbuild(self):
-        rash('git clone https://github.com/bjf/kbuild.git', handler=ash_to_stdout)
+        pre('Clone kbuild tool')
+        rash('git clone https://github.com/bjf/kbuild.git')
 
     def remote_run_kb_setup(self):
-        rash('kbuild/kb setup', handler=ash_to_stdout)
+        pre('Run kb setup')
+        rash('kbuild/kb setup')
+        pre('Ready to use')
 
     def execute(self, cmd: str, remote: str = None) -> None:
         match args.cmd:
