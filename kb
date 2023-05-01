@@ -9,7 +9,7 @@ import sys
 import os
 from argparse                           import ArgumentParser, RawTextHelpFormatter
 
-from subprocess                         import PIPE, STDOUT, Popen
+from subprocess                         import PIPE, STDOUT, Popen, CalledProcessError
 import shlex
 
 
@@ -74,6 +74,17 @@ def ash_to_stderr(line):
 def ash_to_stdout(line):
     pro(line.rstrip())
 
+def rash(cmd, handler=None, additional_ssh_options=''):
+    return Rash.rash(cmd, handler, additional_ssh_options)
+
+class Rash():
+    target = None
+    ssh_options = '-q -o StrictHostKeyChecking=no'
+
+    @classmethod
+    def rash(cls, cmd, handler=None, additional_ssh_options=''):
+        rcmd = f'ssh {cls.target} {cls.ssh_options} {additional_ssh_options} -- \'{cmd}\''
+        return ash(rcmd, handler=handler)
 
 # ------------------------------------------------------------------------------------------------------------------
 class CrankyConfigFileMissingError(Exception):
@@ -142,22 +153,39 @@ class KernelBuilder(KernelBuilderBase):
     def __init__(self):
         super(KernelBuilder, self).__init__()
 
-    def execute(self, cmd: str) -> None:
+    def execute(self, cmd: str, remote: str = None) -> None:
         match args.cmd:
             case 'info':
                 pass
 
             case 'setup':
-                sbuildrc_path = os.path.expanduser('~/.sbuildrc')
-                if os.path.exists(sbuildrc_path):
-                    pre('\nWarning:\n    The ~/.sbuildrc file already exists and will not be overwritten.\n')
-                else:
-                    with open(sbuildrc_path, 'w') as fd:
-                        fd.write(SBUILDRC)
+                if remote:
+                    Rash.target = f'ubuntu@{remote}'
 
-                ash("sudo apt update;sudo apt install sbuild ubuntu-dev-tools -y")
-                ash("sg sbuild -c 'mk-sbuild 'jammy''", ash_to_stdout)
-                ash('newgrp sbuild')
+                    try:
+                        home = os.path.expanduser('~')
+                        ash(f'ssh-keygen -f "{home}/.ssh/known_hosts" -R "{remote}"')
+                    except CalledProcessError:
+                        # Assuming for now that this is the first time for this host and there is no key to be removed.
+                        pass
+                    archmap = {
+                        'aarch64' : 'arm64',
+                        'x86_64'  : 'amd64'
+                    }
+                    uname = rash('uname -m')[0].strip().split('\n')[-1]
+                    arch = archmap[uname]
+                    pre(f'This builder is {arch}')
+                else:
+                    sbuildrc_path = os.path.expanduser('~/.sbuildrc')
+                    if os.path.exists(sbuildrc_path):
+                        pre('\nWarning:\n    The ~/.sbuildrc file already exists and will not be overwritten.\n')
+                    else:
+                        with open(sbuildrc_path, 'w') as fd:
+                            fd.write(SBUILDRC)
+
+                    ash("sudo apt update;sudo apt install sbuild ubuntu-dev-tools -y")
+                    ash("sg sbuild -c 'mk-sbuild 'jammy''", ash_to_stdout)
+                    ash('newgrp sbuild')
 
             case 'build':
                 pass
@@ -184,7 +212,7 @@ setup                       Create the sbuild environment (chroots).
 
     p = ArgumentParser(description=app_description, epilog=app_epilog, formatter_class=RawTextHelpFormatter, add_help=False)
     p.add_argument('cmd', nargs=1, help=cmd_help)
-    # p.add_argument('options', nargs='*', help=None)
+    p.add_argument('--remote', type=str, default=None, help='Perform the operation on a remote system.')
     args = p.parse_args()
     args.cmd = args.cmd[0]
 
@@ -192,7 +220,7 @@ setup                       Create the sbuild environment (chroots).
         p.print_help()
     else:
         try:
-            KernelBuilder().execute(args.cmd)
+            KernelBuilder().execute(args.cmd, args.remote)
             sys.exit(0)
         except (CheckoutError, InitializationError, KteamToolsUpdateError, CrankyConfigFileMissingError) as e:
             pre(f'  ** Error: {str(e)}')
