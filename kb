@@ -52,7 +52,13 @@ class AshError(Exception):
         self.command    = cmd
         self.output     = output
 
-def ash(command, handler=None):
+def ash_to_stderr(line):
+    pre(line.rstrip())
+
+def ash_to_stdout(line):
+    pro(line.rstrip())
+
+def ash(command, handler=ash_to_stdout):
     results = []
     # pre(f'-> {command}')
     process = Popen(shlex.split(command), bufsize=1, stdout=PIPE, stderr=STDOUT, encoding='utf-8', errors='replace' )
@@ -68,12 +74,6 @@ def ash(command, handler=None):
     if rc != 0:
         raise AshError(rc, command, results)
     return results
-
-def ash_to_stderr(line):
-    pre(line.rstrip())
-
-def ash_to_stdout(line):
-    pro(line.rstrip())
 
 def rash(cmd, handler=None, additional_ssh_options=''):
     return Rash.rash(cmd, handler, additional_ssh_options)
@@ -180,6 +180,20 @@ class KernelBuilder(KernelBuilderBase):
         pre('Run kb setup')
         rash('kbuild/kb setup')
         pre('Ready to use')
+
+    def setup_nvidia_ppa(self):
+        # sudo schroot -c source:jammy-amd64
+        #
+        # ->    additional_ppas = [
+        # ->        'deb http://ppa.launchpad.net/canonical-kernel-team/nvidia/ubuntu jammy main',
+        # ->    ]
+        # ->    for ppa in additional_ppas:
+        # ->        if arch == 'amd64':
+        # ->            rash(f'echo "{ppa}" | sudo tee -a /chroots-home/chroots/jammy-amd64/etc/apt/sources.list')
+        # ->        elif arch == 'arm64':
+        # ->            rash(f'echo "{ppa}" | sudo tee -a /chroots-home/chroots/jammy-arm64/etc/apt/sources.list')
+        # ->            rash(f'echo "{ppa}" | sudo tee -a /chroots-home/chroots/focal-arm64/etc/apt/sources.list')
+        pass
 
     def execute(self, cmd: str, remote: str = None) -> None:
         match args.cmd:
