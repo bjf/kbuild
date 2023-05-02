@@ -365,10 +365,10 @@ class KernelBuilder(KernelBuilderBase):
                 user = pwd.getpwuid(os.getuid()).pw_name
                 if remote:
                     Rash.target = remote
-                    # self.remote_setup_user(user)
-                    # stdout('\n')
-                    # self.remote_clone_kbuild()
-                    # stdout('\n')
+                    self.remote_setup_user(user)
+                    stdout('\n')
+                    self.remote_clone_kbuild()
+                    stdout('\n')
                     self.remote_run_kb_setup()
 
                     if False:
