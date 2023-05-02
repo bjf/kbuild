@@ -46,22 +46,65 @@ def pro(*args, **kwargs):
 def pre(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
 
+def stdout(s):
+    sys.stdout.write(s)
+    sys.stdout.flush()
+
+def stderr(s):
+    sys.stderr.write(s)
+    sys.stderr.flush()
+
+
+# ------------------------------------------------------------------------------------------------------------------
+MAGENTA = r'[38;5;5m'
+GREEN   = r'[38;5;2m'
+CYAN    = r'[38;5;6m'
+ORANGE  = r'[38;5;214m'
+RED     = r'[38;5;1m'
+BOLD    = r'[1m'
+EOC     = r'[0m'
+
+def cstr(s, c):
+    '''
+    Colorize a string adding the ASCII characters that set a particular color and/or attribute and then
+    disable it.
+    '''
+    return f'{c}{s}{EOC}'
+
+def section(s):
+    '''
+    Print a "section" line which is intended to show our progress.
+    '''
+    stderr(f' . {cstr(s, GREEN)}\n')
+    OF.reset()
+
+def mark(s):
+    '''
+    Print a progress marker. This is usually just a "." so the user knows that "something" is happening.
+    '''
+    stderr(f'{cstr(s, ORANGE)}')
+
+
 class AshError(Exception):
     def __init__(self, returncode, cmd, output):
         self.returncode = returncode
         self.command    = cmd
         self.output     = output
 
-def ash_to_stderr(line):
+def raw_stderr(s):
+    stderr(s)
+
+def raw_stdout(s):
+    stdout(s)
+
+def ash_to_stderr(line, raw=False):
     pre(line.rstrip())
 
-def ash_to_stdout(line):
+def ash_to_stdout(line, raw=False):
     pro(line.rstrip())
 
-def ash(command, handler=ash_to_stdout):
-    handler = ash_to_stdout
+def ash(command, handler=None):
     results = []
-    # pre(f'-> {command}')
     process = Popen(shlex.split(command), bufsize=1, stdout=PIPE, stderr=STDOUT, encoding='utf-8', errors='replace' )
     while True:
         output = process.stdout.readline()
@@ -89,6 +132,134 @@ class Rash():
         return ash(rcmd, handler=handler)
 
 # ------------------------------------------------------------------------------------------------------------------
+class OF():
+    '''
+    Output Filters
+    '''
+    started         = False
+    completed       = False
+    marks           = 0
+    max_marks       = 80
+    olines          = 0
+    olines_per_mark = 100
+
+    @classmethod
+    def reset(cls):
+        cls.started         = False
+        cls.completed       = False
+        cls.marks           = 0
+        cls.max_marks       = 80
+        cls.olines          = 0
+        cls.olines_per_mark = 100
+
+    @classmethod
+    def rsync(cls, line):
+        '''
+        rsync output filter
+        '''
+        if cls.completed:
+            return
+
+        if cls.started:
+            if line.startswith('total size is'):
+                cls.completed = True
+                stdout('\n')
+
+        elif line.startswith('sending incremental file list'):
+            cls.started = True
+            print('rsync started')
+
+    @classmethod
+    def sbuild_pkg_install(cls, line):
+        '''
+        apt install output filter
+        '''
+        if cls.completed:
+            return
+
+        if cls.started:
+            if line.startswith('No VM guests are running'):
+                cls.completed = True
+                stdout('\n')
+            else:
+                mark('.')
+                cls.marks += 1
+                if cls.marks == cls.max_marks:
+                    stdout('\n    ')
+                    cls.marks = 0
+
+        elif line.startswith('WARNING: apt does not have'):
+            cls.started = True
+            stdout('    ')
+
+    @classmethod
+    def sbuild_mk_sbuild(cls, line):
+        '''
+        sbuild chroot setup output filter
+        '''
+        if cls.completed:
+            return
+
+        if cls.started:
+            if line.startswith(' To BUILD within a snapshot'):
+                cls.completed = True
+                stdout('\n')
+            else:
+                mark('.')
+                cls.marks += 1
+                if cls.marks == cls.max_marks:
+                    stdout('\n    ')
+                    cls.marks = 0
+
+        elif line.startswith('WARNING: apt does not have') and not cls.started:
+            cls.started = True
+            stdout('    ')
+            # print('sbuild setup started')
+
+    @classmethod
+    def sbuild_build(cls, line):
+        '''
+        sbuild build package output filter
+        '''
+        if cls.completed:
+            return
+
+        if cls.started:
+            if line.startswith(' To BUILD within a snapshot'):
+                cls.completed = True
+                stdout('\n')
+                # sys.stdout.write('\nsetup completed\n')
+            elif line.startswith('| ') and line.endswith(' |'):
+                info = line.replace('| ', '').replace(' |', '').replace('  ', '')
+                if cls.marks > 0:
+                    stdout('\n    ')
+                    cls.marks = 0
+                # sys.stdout.write(info)
+                # sys.stdout.write('\n')
+            # elif line.startswith('Package: '):
+            #     sys.stdout.write(f'{line}\n')
+            elif line.startswith('Status: '):
+                stdout(f'{line}\n')
+            # elif line.startswith('Version: '):
+            #     sys.stdout.write(f'{line}\n')
+            # elif line.startswith('Build needed : '):
+            #     sys.stdout.write(f'{line}\n')
+            else:
+                cls.olines += 1
+                if cls.olines == cls.olines_per_mark:
+                    mark('.')
+                    cls.olines = 0
+                    cls.marks += 1
+                if cls.marks == cls.max_marks:
+                    stdout('\n    ')
+                    cls.marks = 0
+
+        elif line.startswith('sbuild (Debian sbuild)'):
+            cls.started = True
+            stdout('    ')
+            # print('sbuild build started')
+
+# ------------------------------------------------------------------------------------------------------------------
 class CrankyConfigFileMissingError(Exception):
     pass
 
@@ -112,20 +283,6 @@ class EnvironmentVerificationError(Exception):
 
 class NotAKernelRepoError(Exception):
     pass
-
-# For now we will do without colorored output.
-#
-# no-color class Clr():
-# no-color     '''
-# no-color     '''
-# no-color     GREEN           = CF('green')
-# no-color     YELLOW          = CF('yellow_1')
-# no-color     CYAN            = CF('cyan')
-# no-color     ORANGE          = CF('orange_1')
-# no-color     RED             = CF('red')
-# no-color     MAGENTA         = CF('magenta')
-# no-color
-# no-color     BOLD            = CA('bold')
 
 class KernelBuilderBase():
     step = 0
@@ -156,7 +313,7 @@ class KernelBuilder(KernelBuilderBase):
         super(KernelBuilder, self).__init__()
 
     def remote_setup_user(self, user):
-        pre('Create remote user')
+        section('Remote User Setup')
         save = Rash.target
         Rash.target = f'ubuntu@{Rash.target}'
         user = pwd.getpwuid(os.getuid()).pw_name
@@ -169,20 +326,23 @@ class KernelBuilder(KernelBuilderBase):
     def remote_setup_sbuild(self, user):
         # The sbuild group doesn't exist until we've installed sbuild so install that now.
         #
-        pre('Install sbuild and ubuntu-dev-tools')
-        rash("sudo apt update;sudo apt install sbuild ubuntu-dev-tools -y")
+        section('Install sbuild and ubuntu-dev-tools')
+        rash("sudo apt update;sudo apt install sbuild ubuntu-dev-tools -y", OF.sbuild_pkg_install)
         rash(f'sudo usermod -a -G sbuild {user}')
 
     def remote_clone_kbuild(self):
-        pre('Clone kbuild tool')
+        section('Clone kbuild tool')
         rash('git clone https://github.com/bjf/kbuild.git')
 
     def remote_run_kb_setup(self):
-        pre('Run kb setup')
-        rash('kbuild/kb setup')
-        pre('Ready to use')
+        section('Run kb setup on remote')
+        rash('kbuild/kb setup', raw_stdout)
 
     def setup_nvidia_ppa(self):
+        # -> cd /
+        # -> sudo schroot -c source:jammy-amd64 -- apt-get install software-properties-common --yes
+        # -> sudo schroot -c source:jammy-amd64 -- add-apt-repository ppa:canonical-kernel-team/nvidia --yes
+
         # sudo schroot -c source:jammy-amd64
         #
         # ->    additional_ppas = [
@@ -202,12 +362,13 @@ class KernelBuilder(KernelBuilderBase):
                 pass
 
             case 'setup':
+                user = pwd.getpwuid(os.getuid()).pw_name
                 if remote:
                     Rash.target = remote
-                    user = pwd.getpwuid(os.getuid()).pw_name
-                    self.remote_setup_user(user)
-                    self.remote_setup_sbuild(user)
-                    self.remote_clone_kbuild()
+                    # self.remote_setup_user(user)
+                    # stdout('\n')
+                    # self.remote_clone_kbuild()
+                    # stdout('\n')
                     self.remote_run_kb_setup()
 
                     if False:
@@ -234,9 +395,15 @@ class KernelBuilder(KernelBuilderBase):
                         with open(sbuildrc_path, 'w') as fd:
                             fd.write(SBUILDRC)
 
-                    ash("sudo apt update")
-                    ash("sudo apt install sbuild ubuntu-dev-tools -y")
-                    ash("sg sbuild -c 'mk-sbuild 'jammy''", ash_to_stdout)
+                    section('Install sbuild and ubuntu-dev-tools packages')
+                    ash('sudo apt update')
+                    ash('sudo apt install sbuild ubuntu-dev-tools -y', OF.sbuild_pkg_install)
+                    ash(f'sudo usermod -a -G sbuild {user}')
+                    stdout('\n')
+
+                    section('sbuild mk-sbuild')
+                    ash("sg sbuild -c 'mk-sbuild 'jammy''", OF.sbuild_mk_sbuild)
+                    stdout('\n')
 
             case 'build':
                 pass
