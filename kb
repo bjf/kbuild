@@ -59,6 +59,7 @@ def ash_to_stdout(line):
     pro(line.rstrip())
 
 def ash(command, handler=ash_to_stdout):
+    handler = ash_to_stdout
     results = []
     # pre(f'-> {command}')
     process = Popen(shlex.split(command), bufsize=1, stdout=PIPE, stderr=STDOUT, encoding='utf-8', errors='replace' )
